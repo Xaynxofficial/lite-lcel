@@ -1,0 +1,188 @@
+Metadata-Version: 2.4
+Name: lite-lcel
+Version: 0.1.0
+Summary: A lightweight implementation of LangChain Expression Language (LCEL) in Python.
+Author: GitHub Contributor
+License: MIT
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.20.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Provides-Extra: openai
+Requires-Dist: openai>=1.0.0; extra == "openai"
+Dynamic: license-file
+
+# Lite-LCEL ⚡
+
+Lite-LCEL, LangChain Expression Language (LCEL) çalışma mantığını, Python'ın `|` (pipe) operatör aşırı yüklemesini (operator overloading) ve zincirleme veri akışını sıfırdan uygulayan hafif, modüler ve eğitim amaçlı bir kütüphanedir.
+
+Bu kütüphane; **asenkron (async/await) çağrılar**, **gerçek zamanlı veri akışı (streaming)**, **paralel işlem yürütme**, **koşullu yönlendirme**, **hata kurtarma (fallbacks & retries)**, **olay izleme (callbacks)**, **durumsal sohbet geçmişi (memory)**, **otonom ajanlar (`AgentExecutor`)** ve **uçtan uca RAG (Retrieval-Augmented Generation - Arama Destekli Üretim)** gibi ileri düzey özellikleri saf Python ile sıfırdan yazılmış temiz bir biçimde sunar. LangChain'in iç mekanizmasını öğrenmek ve GitHub portföyünüze eklemek için mükemmel bir referans projedir.
+
+---
+
+## 🏗️ RAG Mimarisi ve Veri Akışı
+
+Lite-LCEL ile dış bağımlılık (numpy/scipy) gerektirmeden tamamen saf Python kosinüs benzerliği ile dökümanlar aranabilir. Arama adımı (`Retriever`) bir `Runnable` olarak zincire bağlanarak prompt ve dil modeliyle uçtan uca konuşturulabilir:
+
+```mermaid
+graph TD
+    Girdi[Sorgu Metni: Str] --> Retriever[VectorStoreRetriever]
+    Retriever -->|En Yakın Dökümanlar| Format[format_docs: RunnableLambda]
+    Format -->|Birleştirilmiş Metin| Context[Context: Dict Variable]
+    Girdi -->|Passthrough| Soru[Soru: Dict Variable]
+    Context & Soru --> Prompt[PromptTemplate]
+    Prompt --> Model[MockLLM / OpenAILLM]
+    Model --> Parser[String / Json OutputParser]
+    Parser --> Çıktı[Nihai Sonuç: Str]
+```
+
+---
+
+## ✨ Özellikler
+
+- **LCEL Zincirleme Operatörü (`|`):** Sınıfları kolayca bağlayıp veri akış zincirleri oluşturun.
+- **Uçtan Uca RAG Desteği:** Dökümanların kelime frekans kosinüs benzerliğini (`_cosine_similarity`) hesaplayan yerleşik `InMemoryVectorStore` ve zincir uyumlu `VectorStoreRetriever`.
+- **Otonom Ajanlar (`AgentExecutor`):** Model ile bağlı araçlar arasında karar döngüsü kurarak çok adımlı problem çözen ajanlar oluşturun.
+- **Yeniden Deneme Mekanizması (`RunnableRetry`):** Hata durumlarında `.with_retry()` ile üssel bekleme (exponential backoff) uygulayarak otomatik yeniden deneme yapın.
+- **Sohbet Belleği (`RunnableWithMessageHistory`):** `session_id` bazlı sohbet geçmişini otomatik yöneten ve prompt şablonuna geçmişi otomatik enjekte eden bellek yapısı.
+- **Araçlar & Fonksiyon Çağırma (Tool Binding):** `@tool` dekoratörüyle Python fonksiyonlarından otomatik JSON şeması çıkarma ve `.bind_tools()` metoduyla modelleri araçlara duyarlı hale getirme.
+- **Gerçek Zamanlı Akış (Streaming):** `stream` ve `astream` metotları ile dil modelinden gelen yanıtları anlık (kelime/token bazında) dinleyin.
+- **Asenkron Desteği:** `ainvoke` ve `abatch` metotları ile event loop'u bloklamadan yüksek performanslı asenkron sorgular gerçekleştirin.
+- **Paralel Çalıştırma (`RunnableParallel`):** Bağımsız zincir kollarını thread havuzları (`ThreadPoolExecutor`) kullanarak eşzamanlı çalıştırın.
+- **Koşullu Yönlendirme (`RunnableBranch`):** Girdiye göre dinamik karar vererek farklı alt zincirlere dallanma yapın.
+- **Hata Kurtarma (`RunnableWithFallbacks`):** Bir model/zincir çöktüğünde `.with_fallbacks([backup_chain])` ile otomatik olarak yedek zincirlere geçin.
+- **Olay İzleme (Callbacks):** `ConsoleCallbackHandler` ile tüm zincir akışını, LLM çağrılarının başlangıcını, sonunu ve hatalarını şık loglarla izleyin.
+- **JSON Çıktı Ayrıştırma (`JsonOutputParser`):** LLM yanıtlarındaki markdown kod bloklarını ayıklayıp doğrudan Python nesnesine (`dict`/`list`) dönüştürün.
+
+---
+
+## 🚀 Kurulum
+
+Geliştirme bağımlılıklarıyla birlikte projeyi lokalinizde kurmak için:
+
+```bash
+make dev-install
+```
+
+---
+
+## 📖 RAG ve Ajan Örnekleri
+
+### 1. Uçtan Uca RAG Zinciri
+
+Aşağıdaki örnekte döküman arama adımı (`retriever`) ile prompt ve model LCEL ile birleştirilerek RAG boru hattı kurulmuştur:
+
+```python
+from lite_lcel import (
+    InMemoryVectorStore,
+    PromptTemplate,
+    MockLLM,
+    StringOutputParser,
+    RunnablePassthrough,
+    RunnableLambda
+)
+
+# 1. Bilgi Tabanını Yükle
+vectorstore = InMemoryVectorStore()
+vectorstore.add_texts([
+    "Gökyüzü Güneş ışınlarının Rayleigh saçılması nedeniyle mavi görünür.",
+    "Python Guido van Rossum tarafından tasarlanmış bir dildir."
+])
+retriever = vectorstore.as_retriever(k=1)
+
+# 2. Şablon ve Zincir Yapılandırması
+prompt = PromptTemplate("Bağlam:\n{context}\nSoru: {soru}")
+
+# Retriever ve lambda formatlayıcıyı zincire entegre et
+rag_chain = (
+    {
+        "context": retriever | RunnableLambda(lambda docs: "\n".join(d.page_content for d in docs)),
+        "soru": RunnablePassthrough()
+    }
+    | prompt
+    | MockLLM()
+    | StringOutputParser()
+)
+
+print(rag_chain.invoke("Gökyüzü neden mavidir?"))
+```
+
+### 2. Otonom Ajan Döngüsü (`AgentExecutor`)
+
+```python
+from lite_lcel import tool, MockLLM, AgentExecutor
+
+@tool
+def topla(a: int, b: int) -> int:
+    """İki tam sayıyı toplar."""
+    return a + b
+
+agent = AgentExecutor(
+    model=MockLLM(delay=0.1),
+    tools=[topla],
+    max_iterations=3
+)
+
+print(agent.invoke({"soru": "Lütfen topla fonksiyonunu kullanarak 5 ve 10'u topla."}))
+```
+
+### 3. Üssel Bekleme ile Yeniden Deneme (`with_retry`)
+
+```python
+from lite_lcel import RunnableLambda
+
+def unstable_api(x):
+    raise ConnectionError("Sunucu hatası")
+
+# attempts=3: En fazla 3 kez dener. backoff_factor=0.5: Beklemeyi 0.5sn, 1.0sn vb. katlar.
+robust_chain = RunnableLambda(unstable_api).with_retry(
+    attempts=3,
+    backoff_factor=0.5,
+    exceptions=(ConnectionError,)
+)
+
+print(robust_chain.invoke(5))
+```
+
+---
+
+## 🧪 Testlerin Çalıştırılması
+
+Tüm testleri koşturmak için:
+
+```bash
+# Testleri çalıştır (26+ birim ve entegrasyon testi)
+make test
+```
+
+---
+
+## 📂 Klasör Yapısı
+
+```text
+.
+├── Makefile                    # Geliştirici komutları
+├── pyproject.toml              # Paket kurulum ayarları
+├── requirements.txt            # Minimal bağımlılıklar
+├── requirements-dev.txt        # Geliştirme araçları (pytest, black, ruff)
+├── README.md                   # Proje dökümantasyonu
+├── lite_lcel/                  # Kütüphane çekirdeği
+│   ├── base.py                 # Zincirleme mantığı, paralel, branch, fallback ve retry sınıfları
+│   ├── prompts.py              # Şablonlar ve Mesaj sınıfları
+│   ├── parsers.py              # Çıktı ayrıştırıcıları (String, JSON)
+│   ├── callbacks.py            # Event/Olay yöneticileri (İzleme)
+│   ├── tools.py                # Fonksiyon şemalandırma ve araçlar
+│   ├── memory.py               # Konuşma geçmişi ve durumsal bellek
+│   ├── agents.py               # AgentExecutor otonom karar döngüsü
+│   ├── vectorstores.py         # Document, InMemoryVectorStore ve Retriever (RAG)
+│   └── models/                 # Model adaptörleri (Mock, OpenAI)
+├── tests/                      # Kapsamlı birim ve entegrasyon testleri
+└── examples/                   # Çalıştırılabilir zengin örnek dosyaları
+```
